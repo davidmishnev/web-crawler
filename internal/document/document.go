@@ -7,7 +7,7 @@ import (
 
 type Document struct {
 	URL         url.URL
-	ContentType Content
+	ContentType string
 	Title       string
 	Text        string
 	Links       []url.URL
