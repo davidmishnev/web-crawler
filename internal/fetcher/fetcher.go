@@ -34,5 +34,4 @@ func (f Fetcher) FetchResource(ctx context.Context, url url.URL) (*r.Resource, e
 		Headers:     resp.Header,
 		Data:        data,
 	}, nil
-
 }
