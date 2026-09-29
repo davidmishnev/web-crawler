@@ -2,24 +2,25 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
+	"log/slog"
 	"os"
-	"time"
-	"web-crawler/internal/storage"
+	"os/signal"
+	"syscall"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"web-crawler/internal/crawler"
 )
 
 func main() {
-	dburl := os.Getenv("DATABASE_URL")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	pool, err := pgxpool.New(ctx, dburl)
-	if err != nil {
-		panic(err)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	err := crawler.Run(ctx, os.Args[1:], os.Getenv("DATABASE_URL"), os.Stderr)
+	stop()
+	if errors.Is(err, flag.ErrHelp) {
+		return
 	}
-	defer pool.Close()
-
-	_ = storage.NewStorage(pool)
-
+	if err != nil {
+		slog.Error("crawler stopped", "error", err)
+		os.Exit(1)
+	}
 }

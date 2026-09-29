@@ -2,10 +2,13 @@ package pdf
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"mime"
 	"strings"
 
 	d "web-crawler/internal/document"
+	"web-crawler/internal/parser"
 	r "web-crawler/internal/resource"
 
 	"github.com/ledongthuc/pdf"
@@ -13,13 +16,17 @@ import (
 
 type PDFParser struct{}
 
-func (p PDFParser) CanParse(resource r.Resource) bool {
-	contentType := strings.ToLower(resource.ContentType)
+var _ parser.Parser = PDFParser{}
 
-	return strings.HasPrefix(contentType, "application/pdf")
+func (p PDFParser) CanParse(resource r.Resource) bool {
+	contentType, _, err := mime.ParseMediaType(resource.ContentType)
+	return err == nil && contentType == "application/pdf"
 }
 
-func (p PDFParser) Parse(resource r.Resource) (*d.Document, error) {
+func (p PDFParser) Parse(ctx context.Context, resource r.Resource) (*d.Document, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	reader, err := pdf.NewReader(
 		bytes.NewReader(resource.Data),
 		int64(len(resource.Data)),
@@ -28,21 +35,27 @@ func (p PDFParser) Parse(resource r.Resource) (*d.Document, error) {
 		return nil, fmt.Errorf("create PDF reader: %w", err)
 	}
 
-	text, err := extractText(reader)
+	text, err := extractText(ctx, reader)
 	if err != nil {
 		return nil, fmt.Errorf("extract PDF text: %w", err)
 	}
 
 	return &d.Document{
-		URL:  resource.URL,
-		Text: text,
+		URL:         resource.URL,
+		ContentType: resource.ContentType,
+		Title:       reader.Trailer().Key("Info").Key("Title").Text(),
+		Metadata:    d.Metadata{Author: reader.Trailer().Key("Info").Key("Author").Text()},
+		Text:        text,
 	}, nil
 }
 
-func extractText(reader *pdf.Reader) (string, error) {
+func extractText(ctx context.Context, reader *pdf.Reader) (string, error) {
 	var builder strings.Builder
 
 	for pageNum := 1; pageNum <= reader.NumPage(); pageNum++ {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		page := reader.Page(pageNum)
 
 		if page.V.IsNull() {
